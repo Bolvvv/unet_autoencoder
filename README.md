@@ -1,2 +1,4 @@
 # unet_autoencoder
 使用UNet网络进行图片生成
+
+克隆项目后请在根目录下新建result文件夹，用于存放训练结果和训练模型
