@@ -1,12 +1,13 @@
 import torch
 from torch import utils
 from dataset import CustomDataset
-from Config import TrainingConfig
+from config import TrainingConfig
 from torchvision import datasets, transforms, models
 import torch.nn as nn
 import time
 from unet import UNet
 import sys
+from PIL import Image
 
 #设置cuda使用
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -36,6 +37,7 @@ def train_step(model, config, train_loader, criterion, optimizer, epoch):
         #计算参数
         total += src_images.size(0)
         total_loss += loss.item()*src_images.size(0)
+        n_iter_loss += loss.item()
 
         if (i+1) % config.show_n_iter == 0:
             print('Epoch: [{}/{}], Step: [{}/{}], Loss: {:.6f}'
@@ -70,7 +72,7 @@ def train_valid(model, config, train_loader, valid_loader):
     #记录最低的Loss
     min_loss = sys.maxsize
     # Loss and optimizer
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     result_file_path = './result/'+time.strftime('%m%d_%H%M_%S',time.localtime(time.time()))+'_results.csv'
     #将信息写入csv文件中
@@ -107,9 +109,9 @@ def load_data(config):
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=stdv),
     ])
-    train_set = CustomDataset(filename="../data/deepbc/autoencoder_labels/train.txt", src_dir="../data/deepbc/usg_images_cutted_p1", tgt_dir="../data/deepbc/usg_images_cutted_v3", src_transform=source_transforms, tgt_transform=tgt_transform)
-    valid_set = CustomDataset(filename="../data/deepbc/autoencoder_labels/valid.txt", src_dir="../data/deepbc/usg_images_cutted_p1", tgt_dir="../data/deepbc/usg_images_cutted_v3", src_transform=source_transforms, tgt_transform=tgt_transform)
-    test_set = CustomDataset(filename="../data/deepbc/autoencoder_labels/test.txt", src_dir="../data/deepbc/usg_images_cutted_p1", tgt_dir="../data/deepbc/usg_images_cutted_v3", src_transform=source_transforms, tgt_transform=tgt_transform)
+    train_set = CustomDataset(filename="../data/deepbc/autoencoder_labels/train.txt", src_dir="../data/deepbc/usg_images_cutted_p1", tgt_dir="../data/deepbc/usg_images_cutted_v3", src_transform=src_transform, tgt_transform=tgt_transform)
+    valid_set = CustomDataset(filename="../data/deepbc/autoencoder_labels/valid.txt", src_dir="../data/deepbc/usg_images_cutted_p1", tgt_dir="../data/deepbc/usg_images_cutted_v3", src_transform=src_transform, tgt_transform=tgt_transform)
+    test_set = CustomDataset(filename="../data/deepbc/autoencoder_labels/test.txt", src_dir="../data/deepbc/usg_images_cutted_p1", tgt_dir="../data/deepbc/usg_images_cutted_v3", src_transform=src_transform, tgt_transform=tgt_transform)
 
     #载入训练参数
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=config.batch_size, shuffle=True,
@@ -121,13 +123,30 @@ def load_data(config):
 
     return train_loader, valid_loader, test_loader
 
+#生成单张图片
+def generate_img(model, img_path, out_img_path):
+    #模型载入
+    model.load_state_dict(torch.load('./result/model.dat'))
+    #tensor和PIL相互转化
+    loader = transforms.Compose([transforms.ToTensor()])
+    unloader = transforms.ToPILImage()
+    
+    img = Image.open(img_path)#PIL图片
+    tensor_img = loader(img).unsqueeze(0).to(device)#转换为tensor
+    out = model(tensor_img)#输出图片
+    pil_img = unloader(out.squeeze(0))#转换为PIL图片
+    pil_img.save(out_img_path)
+
 if __name__ == "__main__":
     #获取训练超参
     config = TrainingConfig
     #载入数据
     train_loader, valid_loader, test_loader = load_data(config)
     #初始化模型
-    model = UNet(3, 3, bilinear=True)
+    model_unet = UNet(3, 3, bilinear=True)
+    model_unet = model_unet.to(device)
 
     if config.train:
-        train_valid(model, config, train_loader, valid_loader)
+        train_valid(model_unet, config, train_loader, valid_loader)
+
+    # generate_img(model_unet, "0913_1_1.jpg", "hhh.jpg")
